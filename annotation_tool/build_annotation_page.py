@@ -24,7 +24,7 @@ TARGETS = [
     (HERE / "template.html", HERE / "annotate.html"),
 ]
 CONFIG_JS = SITE_DIR / "config.js"
-CONFIG_TEMPLATE = """// Paste the Apps Script web app URL (ends in /exec) between the quotes.
+CONFIG_TEMPLATE = """
 window.ANNOTATION_API_URL = "";
 """
 

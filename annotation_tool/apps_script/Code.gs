@@ -1,10 +1,6 @@
 /**
  * Backend for the review-intent annotation page.
  *
- * Paste this into Extensions > Apps Script of the Google Sheet that will hold
- * the labels, run setup() once, then deploy as a web app
- * (Execute as: Me, Who has access: Anyone). See SETUP.md.
- *
  * Sheets:
  *   Annotators  code | name        one row per annotator; the code is their login
  *   Labels      one row per (annotator, item), upserted on every save
