@@ -223,7 +223,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
         <button class="btn" type="button" id="next">Next →</button>
         <button class="btn primary wide" type="button" id="next-todo">Next unfinished</button>
       </div>
-      <div class="keys"><kbd>1</kbd>–<kbd>9</kbd> <kbd>0</kbd> <kbd>-</kbd> toggle labels · <kbd>F</kbd> flag · <kbd>←</kbd> <kbd>→</kbd> move · <kbd>N</kbd> next unfinished</div>
+      <div class="keys"><kbd>1</kbd>–<kbd>9</kbd> <kbd>0</kbd> toggle labels · <kbd>F</kbd> flag · <kbd>←</kbd> <kbd>→</kbd> move · <kbd>N</kbd> next unfinished</div>
     </aside>
   </div>
 </div>
@@ -288,10 +288,10 @@ const LABELS = [
     def: "Seeks information, justification or confirmation; oriented toward a response rather than a code change.",
     markers: "Why did you…? What does this…? Is this…? I’m wondering whether…; Can you explain…?",
     boundary: "A question that also identifies a risk can get RQ + CN. Directive rhetorical questions are RC." },
-  { code: "CN", name: "Raise a Concern", q: "Does the author flag a potential problem with no prescribed fix?",
-    def: "Reports a potential problem, risk or issue without saying what to do or whether action is required.",
-    markers: "this might, there could be, I’m not sure this handles; I’m concerned that, worried about.",
-    boundary: "Problem + what to do → RC. Often co-occurs with RQ (“Have we handled the null case here?”)." },
+  { code: "CN", name: "Concern / Uncertainty", q: "Does the author flag a potential problem or express doubt, with no prescribed fix and no question asked?",
+    def: "Reports a potential problem, risk or issue, or signals doubt or low confidence about the implementation or design, without saying what to do or asking for an answer. Covers both concrete risks (“This could cause a race condition”) and vague unease (“Not sure if this is thread-safe”).",
+    markers: "this might, there could be, I’m concerned that, worried about; Not sure if…, I might be wrong, but…, This feels off, Probably fine, but…",
+    boundary: "Problem + what to do → RC. Ends in a direct question → usually RQ; a question that also identifies a risk gets RQ + CN (“Have we handled the null case here?”)." },
   { code: "EX", name: "Provide an Explanation", q: "Does the author supply rationale, information, or an answer?",
     def: "Supplies rationale, context, additional information or a direct answer to a prior question.",
     markers: "because, the reason is; for context, note that; yes, that’s intentional.",
@@ -312,16 +312,12 @@ const LABELS = [
     def: "States a factual finding about existing code, prior behavior or a pattern, without directing action or evaluating it as a problem.",
     markers: "The existing implementation already…, I noticed that…; Currently, this…",
     boundary: "OB states what is; EX explains why. If the finding implies a defect or risk → CN." },
-  { code: "UN", name: "Express Uncertainty", q: "Does the author signal doubt without naming a specific problem or asking?",
-    def: "Signals doubt or low confidence without identifying a specific defect (CN) or soliciting an answer (RQ).",
-    markers: "Not sure if…, I might be wrong, but…; This feels off; Probably fine, but…",
-    boundary: "“This could cause a race condition” → CN; “Not sure if this is thread-safe” → UN. Ends in a direct question → usually RQ." },
   { code: "AT", name: "Action Taken", q: "Does the author report that a change, fix, or investigation is already done?",
     def: "Reports a change, fix, investigation or other action that has already been completed.",
     markers: "I’ve updated…, Fixed in commit…, Pushed a fix…, Added a test…; I looked into this: it turns out…",
     boundary: "“I’ll address this” → CR (future); “Addressed in the latest commit” → AT. “Good catch!” → AK." },
 ];
-const KEYS = ["1","2","3","4","5","6","7","8","9","0","-"];
+const KEYS = ["1","2","3","4","5","6","7","8","9","0"];
 const $ = (id) => document.getElementById(id);
 const byId = new Map(ITEMS.map((it, i) => [it.id, i]));
 
@@ -542,7 +538,9 @@ function showNotice(text, warn) { const n = $("notice"); n.textContent = text; n
 
 /* ---------- sign in ---------- */
 function normalize(v) {
-  return { labels: v.labels || [], confidence: v.confidence || "", rationale: v.rationale || "", flag: !!v.flag, updated_at: v.updated_at || "" };
+  // UN (Express Uncertainty) was merged into CN; carry over any labels saved before the merge.
+  const labels = [...new Set((v.labels || []).map((l) => (l === "UN" ? "CN" : l)))];
+  return { labels, confidence: v.confidence || "", rationale: v.rationale || "", flag: !!v.flag, updated_at: v.updated_at || "" };
 }
 async function signIn(code) {
   const res = await api({ action: "load", code });

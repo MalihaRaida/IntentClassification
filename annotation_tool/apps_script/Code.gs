@@ -17,7 +17,7 @@ const LABEL_HEADERS = [
   "confidence", "rationale", "flag", "status", "updated_at", "saved_at",
 ];
 const CONFIDENCE = ["High", "Medium", "Low", ""];
-const LABEL_CODES = ["RC", "SP", "RQ", "CN", "EX", "AK", "CR", "VF", "OB", "UN", "AT"];
+const LABEL_CODES = ["RC", "SP", "RQ", "CN", "EX", "AK", "CR", "VF", "OB", "AT"];
 
 function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
