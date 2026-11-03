@@ -203,7 +203,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     <aside class="panel" id="panel" aria-label="Annotation form">
       <div class="state"><span class="dot" id="state-dot"></span><span id="state-text">Not started</span></div>
       <div>
-        <div class="field-label"><span class="eyebrow">Intent labels</span><span class="hint">one or more</span></div>
+        <div class="field-label"><span class="eyebrow">Intent label</span><span class="hint">pick one</span></div>
         <div class="chips" id="chips"></div>
         <div class="qhelp" id="qhelp">Hover a label to see the question it answers.</div>
       </div>
@@ -223,7 +223,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
         <button class="btn" type="button" id="next">Next →</button>
         <button class="btn primary wide" type="button" id="next-todo">Next unfinished</button>
       </div>
-      <div class="keys"><kbd>1</kbd>–<kbd>9</kbd> <kbd>0</kbd> toggle labels · <kbd>F</kbd> flag · <kbd>←</kbd> <kbd>→</kbd> move · <kbd>N</kbd> next unfinished</div>
+      <div class="keys"><kbd>1</kbd>–<kbd>9</kbd> <kbd>0</kbd> choose label · <kbd>F</kbd> flag · <kbd>←</kbd> <kbd>→</kbd> move · <kbd>N</kbd> next unfinished</div>
     </aside>
   </div>
 </div>
@@ -235,9 +235,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   <ol>
     <li>Read the full context first: diff, previous comment, target comment, reply.</li>
     <li>Identify the communicative act. A question that works as a directive is RC, not RQ.</li>
-    <li>Assign every label for which the comment clearly performs a distinct act.</li>
+    <li>Choose the one label that best describes the main act the comment performs. If it does several things, pick the operative intent: a directive outweighs a concern or a question.</li>
     <li>Rate your confidence.</li>
-    <li>Write a one-sentence rationale. It is required when confidence is Low or you assign more than two labels.</li>
+    <li>Write a one-sentence rationale for any non-obvious label. It is required when confidence is Low.</li>
     <li>Flag any item that should be discussed at reconciliation, even if you labeled it.</li>
   </ol>
   <h3>Don'ts</h3>
@@ -287,11 +287,11 @@ const LABELS = [
   { code: "RQ", name: "Request Clarification", q: "Does the author seek information, rationale, or understanding?",
     def: "Seeks information, justification or confirmation; oriented toward a response rather than a code change.",
     markers: "Why did you…? What does this…? Is this…? I’m wondering whether…; Can you explain…?",
-    boundary: "A question that also identifies a risk can get RQ + CN. Directive rhetorical questions are RC." },
+    boundary: "A question that also identifies a risk: RQ if it mainly seeks an answer, CN if it mainly flags the risk. Directive rhetorical questions are RC." },
   { code: "CN", name: "Concern / Uncertainty", q: "Does the author flag a potential problem or express doubt, with no prescribed fix and no question asked?",
     def: "Reports a potential problem, risk or issue, or signals doubt or low confidence about the implementation or design, without saying what to do or asking for an answer. Covers both concrete risks (“This could cause a race condition”) and vague unease (“Not sure if this is thread-safe”).",
     markers: "this might, there could be, I’m concerned that, worried about; Not sure if…, I might be wrong, but…, This feels off, Probably fine, but…",
-    boundary: "Problem + what to do → RC. Ends in a direct question → usually RQ; a question that also identifies a risk gets RQ + CN (“Have we handled the null case here?”)." },
+    boundary: "Problem + what to do → RC. Ends in a direct question → usually RQ; for a question that also flags a risk (“Have we handled the null case here?”), pick whichever act is primary." },
   { code: "EX", name: "Provide an Explanation", q: "Does the author supply rationale, information, or an answer?",
     def: "Supplies rationale, context, additional information or a direct answer to a prior question.",
     markers: "because, the reason is; for context, note that; yes, that’s intentional.",
@@ -329,10 +329,10 @@ function lsSet(k, v) { try { localStorage.setItem(k, v); } catch {} }
 
 function blank() { return { labels: [], confidence: "", rationale: "", flag: false }; }
 function annOf(id) { return state.ann[id] || blank(); }
-function needsRationale(a) { return a.confidence === "Low" || a.labels.length > 2; }
+function needsRationale(a) { return a.confidence === "Low"; }
 function statusOf(a) {
   if (!a || (!a.labels.length && !a.confidence && !a.rationale.trim() && !a.flag)) return "empty";
-  return a.labels.length && a.confidence && (!needsRationale(a) || a.rationale.trim()) ? "done" : "partial";
+  return a.labels.length === 1 && a.confidence && (!needsRationale(a) || a.rationale.trim()) ? "done" : "partial";
 }
 
 /* ---------- rendering ---------- */
@@ -397,7 +397,7 @@ function updatePanel() {
   const r = $("rationale");
   if (document.activeElement !== r) r.value = a.rationale;
   const need = needsRationale(a);
-  $("r-hint").textContent = need ? "required (Low confidence or 3+ labels)" : "optional";
+  $("r-hint").textContent = need ? "required for Low confidence" : "optional";
   r.classList.toggle("need", need && !a.rationale.trim());
   $("flag").checked = !!a.flag;
   const s = statusOf(a);
@@ -410,6 +410,7 @@ function updatePanel() {
 function missingText(a) {
   const miss = [];
   if (!a.labels.length) miss.push("a label");
+  else if (a.labels.length > 1) miss.push("just one label");
   if (!a.confidence) miss.push("confidence");
   if (needsRationale(a) && !a.rationale.trim()) miss.push("a rationale");
   return "Needs " + miss.join(", ");
@@ -460,7 +461,8 @@ function edit(fn, delay) {
   updatePanel();
   scheduleSave(id, delay);
 }
-function toggleLabel(code) { edit((a) => { a.labels = a.labels.includes(code) ? a.labels.filter((c) => c !== code) : [...a.labels, code]; }, 400); }
+// One label per comment: picking a label replaces the current one; picking it again clears it.
+function toggleLabel(code) { edit((a) => { a.labels = a.labels.length === 1 && a.labels[0] === code ? [] : [code]; }, 400); }
 function setConf(v) { edit((a) => { a.confidence = a.confidence === v ? "" : v; }, 400); }
 
 /* ---------- saving (Google Sheet through the Apps Script web app) ---------- */

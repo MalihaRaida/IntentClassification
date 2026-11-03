@@ -106,7 +106,7 @@ function save_(code, items) {
       const key = a.code + "|" + id;
       const row = [
         key, a.code, a.name, String(id),
-        (it.labels || []).filter((l) => LABEL_CODES.indexOf(l) >= 0).join(";"),
+        (it.labels || []).filter((l) => LABEL_CODES.indexOf(l) >= 0).slice(0, 1).join(";"),  // one label per item
         CONFIDENCE.indexOf(it.confidence) >= 0 ? it.confidence : "",
         String(it.rationale || "").slice(0, 5000),
         it.flag ? "TRUE" : "FALSE",
