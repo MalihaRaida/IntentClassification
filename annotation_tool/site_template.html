@@ -1,0 +1,675 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Review Intent Annotation</title>
+<script src="config.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap">
+<style>
+/* Layout: work bench. Context (PR, diff, thread) reads on the left; the label form sits pinned on the right, stacking below on phones. */
+:root {
+  --bg: #f3f5f6;
+  --surface: #ffffff;
+  --sunken: #e9edef;
+  --line: #d3dade;
+  --fg: #172126;
+  --muted: #5a6a72;
+  --accent: #0f6b74;
+  --accent-ink: #ffffff;
+  --accent-soft: #d6ecee;
+  --target: #fff6d9;
+  --target-line: #d9a514;
+  --add-bg: #e3f4e6; --add-fg: #1d5a2a;
+  --del-bg: #fbe5e3; --del-fg: #8a2620;
+  --hunk: #6a4fa0;
+  --done: #2c8a4f; --partial: #c98a12; --empty: #c3cbd0; --flag: #c2412d;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-head: "IBM Plex Sans Condensed", "IBM Plex Sans", "Arial Narrow", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1518; --surface: #161e22; --sunken: #1d272c; --line: #2c393f; --fg: #e3eaed; --muted: #93a3ab;
+  --accent: #4fb3bc; --accent-ink: #062a2e; --accent-soft: #163a3e; --target: #2e2810; --target-line: #c9971a;
+  --add-bg: #12301b; --add-fg: #9fdcaf; --del-bg: #3a1714; --del-fg: #f0a59d; --hunk: #b9a2ea;
+  --done: #4cc07a; --partial: #e2a83a; --empty: #3b4a51; --flag: #ef7360; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0f1518; --surface: #161e22; --sunken: #1d272c; --line: #2c393f; --fg: #e3eaed; --muted: #93a3ab;
+  --accent: #4fb3bc; --accent-ink: #062a2e; --accent-soft: #163a3e; --target: #2e2810; --target-line: #c9971a;
+  --add-bg: #12301b; --add-fg: #9fdcaf; --del-bg: #3a1714; --del-fg: #f0a59d; --hunk: #b9a2ea;
+  --done: #4cc07a; --partial: #e2a83a; --empty: #3b4a51; --flag: #ef7360; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+:root { color-scheme: light; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
+button, select, textarea, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code, pre { font-family: var(--font-mono); }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line);
+  padding-block: 10px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.bar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; max-width: 1400px; margin: 0 auto; }
+.brand { font-family: var(--font-head); font-weight: 600; font-size: 17px; letter-spacing: .01em; margin-right: auto; display: flex; align-items: baseline; gap: 10px; }
+.brand small { font-family: var(--font-body); font-weight: 400; font-size: 13px; color: var(--muted); }
+.progress { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+.meter { width: 160px; height: 6px; border-radius: 3px; background: var(--sunken); overflow: hidden; display: flex; }
+.meter i { display: block; height: 100%; }
+.meter .m-done { background: var(--done); } .meter .m-part { background: var(--partial); }
+.save { font-size: 12px; color: var(--muted); min-width: 92px; text-align: right; }
+.save.err { color: var(--flag); }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 5px 11px; font-size: 13px; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 500; }
+.btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.btn:disabled { opacity: .45; cursor: default; }
+
+.notice { max-width: 1400px; margin: 12px auto 0; padding: 10px 14px; border-radius: 6px; background: var(--accent-soft); font-size: 14px; }
+.notice.warn { background: var(--del-bg); color: var(--del-fg); }
+
+/* main layout */
+.wrap { padding-block: 16px 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.main { max-width: 1400px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 20px; align-items: start; }
+@media (max-width: 940px) { .main { grid-template-columns: minmax(0, 1fr); } }
+.context { display: grid; gap: 14px; min-width: 0; }
+.panel { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 72px); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 16px; }
+@media (max-width: 940px) { .panel { position: static; } }
+
+.section { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
+.section > header { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.eyebrow { font-family: var(--font-head); font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.section .body { padding: 12px 14px; min-width: 0; }
+
+.item-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+.item-id { font-family: var(--font-head); font-size: 24px; font-weight: 600; }
+.pr-title { font-size: 18px; font-weight: 500; text-wrap: balance; margin: 2px 0 6px; overflow-wrap: anywhere; }
+.meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--muted); }
+.meta a { color: var(--accent); }
+.path { font-family: var(--font-mono); font-size: 12.5px; overflow-wrap: anywhere; }
+
+details.desc summary { cursor: pointer; font-size: 13px; color: var(--accent); }
+.prose { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
+.desc .prose { max-height: 360px; overflow: auto; margin-top: 8px; padding: 10px 12px; background: var(--sunken); border-radius: 6px; font-size: 13px; }
+
+.diff { overflow-x: auto; background: var(--sunken); border-radius: 6px; font-size: 12.5px; line-height: 1.55; }
+.diff pre { margin: 0; padding: 8px 0; min-width: max-content; }
+.diff span { display: block; padding: 0 12px; white-space: pre; }
+.diff .add { background: var(--add-bg); color: var(--add-fg); }
+.diff .del { background: var(--del-bg); color: var(--del-fg); }
+.diff .hunk { color: var(--hunk); }
+
+.thread { display: grid; gap: 10px; }
+.cmt { border-left: 3px solid var(--line); padding: 6px 0 6px 12px; min-width: 0; }
+.cmt .who { font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+.cmt.target { border-left-color: var(--target-line); background: var(--target); border-radius: 0 6px 6px 0; padding: 10px 12px; }
+.cmt.target .prose { font-size: 15px; }
+.cmt.none .prose { color: var(--muted); font-style: italic; font-size: 13px; }
+
+/* label form */
+.field-label { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.hint { font-size: 12px; color: var(--muted); }
+.chips { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.chip { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 6px 8px; font-size: 13px; line-height: 1.25; }
+.chip b { font-family: var(--font-mono); font-weight: 500; font-size: 12px; background: var(--sunken); border-radius: 4px; padding: 1px 5px; }
+.chip kbd { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.chip:hover { border-color: var(--accent); }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.chip[aria-pressed="true"] b { background: color-mix(in srgb, var(--accent-ink) 22%, transparent); }
+.chip[aria-pressed="true"] kbd { color: inherit; opacity: .8; }
+.qhelp { font-size: 12.5px; color: var(--muted); min-height: 2.6em; margin-top: 8px; }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { border: 0; background: var(--surface); padding: 7px 0; font-size: 13px; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 500; }
+textarea { width: 100%; min-height: 74px; resize: vertical; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); padding: 8px 10px; font-size: 14px; }
+textarea.need { border-color: var(--partial); }
+.flagrow { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.flagrow input { width: 16px; height: 16px; accent-color: var(--flag); }
+.state { font-size: 13px; display: flex; align-items: center; gap: 8px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--empty); flex: none; }
+.dot.done { background: var(--done); } .dot.partial { background: var(--partial); }
+.nav { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.nav .btn { padding: 8px; }
+.nav .wide { grid-column: 1 / -1; }
+.keys { font-size: 12px; color: var(--muted); line-height: 1.6; }
+.keys kbd { font-family: var(--font-mono); font-size: 11px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; background: var(--surface); }
+
+/* overlays */
+.sheet { position: fixed; inset: 0; z-index: 20; background: color-mix(in srgb, var(--fg) 35%, transparent); display: flex; justify-content: flex-end; }
+.sheet > div { width: min(720px, 100%); height: 100%; overflow: auto; background: var(--surface); border-left: 1px solid var(--line);
+  padding-block: calc(env(safe-area-inset-top, 0px) + 18px) calc(env(safe-area-inset-bottom, 0px) + 24px); padding-left: 22px; padding-right: max(22px, env(safe-area-inset-right, 0px)); }
+.sheet h2 { font-family: var(--font-head); font-size: 22px; font-weight: 600; margin: 0; }
+.sheet h3 { font-family: var(--font-head); font-size: 16px; font-weight: 600; margin: 22px 0 6px; }
+.sheet-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
+.sheet p, .sheet li { font-size: 14px; max-width: 65ch; }
+.def { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+.def h4 { margin: 0 0 4px; font-size: 15px; display: flex; gap: 8px; align-items: baseline; }
+.def h4 b { font-family: var(--font-mono); font-weight: 500; font-size: 13px; background: var(--accent-soft); border-radius: 4px; padding: 1px 6px; }
+.def p { margin: 4px 0; }
+.def .lbl { font-weight: 600; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 4px; margin-top: 12px; }
+.cell { border: 1px solid var(--line); border-radius: 4px; background: var(--surface); font-family: var(--font-mono); font-size: 11px; padding: 5px 0; position: relative; }
+.cell.done { background: color-mix(in srgb, var(--done) 22%, var(--surface)); border-color: var(--done); }
+.cell.partial { background: color-mix(in srgb, var(--partial) 22%, var(--surface)); border-color: var(--partial); }
+.cell.cur { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cell.flag::after { content: ""; position: absolute; top: 2px; right: 2px; width: 5px; height: 5px; border-radius: 50%; background: var(--flag); }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--muted); align-items: center; }
+.legend span { display: inline-flex; gap: 6px; align-items: center; }
+
+.tbl-wrap { overflow-x: auto; }
+table { border-collapse: collapse; font-size: 13px; width: 100%; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-family: var(--font-head); font-weight: 600; font-size: 12px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.stat-row { display: flex; flex-wrap: wrap; gap: 10px 24px; margin: 8px 0; }
+.stat b { display: block; font-family: var(--font-head); font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat span { font-size: 12px; color: var(--muted); }
+.pair { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; }
+.pair select { border: 1px solid var(--line); border-radius: 6px; background: var(--surface); padding: 4px 6px; }
+@media (prefers-reduced-motion: no-preference) { .chip, .btn, .seg button { transition: background-color .12s, border-color .12s; } }
+.sheet.center { justify-content: center; align-items: center; }
+.sheet.center > div { width: min(440px, calc(100% - 32px)); height: auto; border: 1px solid var(--line); border-radius: 10px; padding: 24px; display: grid; gap: 10px; }
+.sheet.center p { margin: 0; }
+.login { display: grid; gap: 8px; margin-top: 6px; }
+.login input { border: 1px solid var(--line); border-radius: 6px; background: var(--surface); padding: 9px 11px; font-family: var(--font-mono); font-size: 16px; letter-spacing: .04em; }
+.login .btn { padding: 9px; font-size: 14px; }
+.login-msg { font-size: 13px; color: var(--flag); min-height: 1.4em; }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <div class="bar-row">
+    <div class="brand">Review Intent Annotation <small id="who"></small></div>
+    <div class="progress"><div class="meter" aria-hidden="true"><i class="m-done" id="m-done"></i><i class="m-part" id="m-part"></i></div><span class="mono" id="prog">0 / 0 complete</span></div>
+    <span class="save" id="save" role="status"></span>
+    <button class="btn" id="btn-map" type="button">All items</button>
+    <button class="btn" id="btn-guide" type="button">Guidelines</button>
+    <button class="btn" id="btn-switch" type="button" hidden>Switch annotator</button>
+  </div>
+</div>
+<div class="wrap">
+  <div class="notice" id="notice" hidden></div>
+  <div class="main">
+    <div class="context" id="context"></div>
+    <aside class="panel" id="panel" aria-label="Annotation form">
+      <div class="state"><span class="dot" id="state-dot"></span><span id="state-text">Not started</span></div>
+      <div>
+        <div class="field-label"><span class="eyebrow">Intent labels</span><span class="hint">one or more</span></div>
+        <div class="chips" id="chips"></div>
+        <div class="qhelp" id="qhelp">Hover a label to see the question it answers.</div>
+      </div>
+      <div>
+        <div class="field-label"><span class="eyebrow">Confidence</span><span class="hint">H / M / L keys</span></div>
+        <div class="seg" id="conf" role="group" aria-label="Confidence">
+          <button type="button" data-v="High">High</button><button type="button" data-v="Medium">Medium</button><button type="button" data-v="Low">Low</button>
+        </div>
+      </div>
+      <div>
+        <div class="field-label"><label class="eyebrow" for="rationale">Rationale</label><span class="hint" id="r-hint">optional</span></div>
+        <textarea id="rationale" placeholder="One sentence on why, for any non-obvious label."></textarea>
+      </div>
+      <label class="flagrow"><input type="checkbox" id="flag"> Flag for the reconciliation meeting</label>
+      <div class="nav">
+        <button class="btn" type="button" id="prev">← Previous</button>
+        <button class="btn" type="button" id="next">Next →</button>
+        <button class="btn primary wide" type="button" id="next-todo">Next unfinished</button>
+      </div>
+      <div class="keys"><kbd>1</kbd>–<kbd>9</kbd> <kbd>0</kbd> <kbd>-</kbd> toggle labels · <kbd>F</kbd> flag · <kbd>←</kbd> <kbd>→</kbd> move · <kbd>N</kbd> next unfinished</div>
+    </aside>
+  </div>
+</div>
+
+<div class="sheet" id="sheet-guide" data-closable hidden><div role="dialog" aria-modal="true" aria-labelledby="g-title">
+  <div class="sheet-head"><h2 id="g-title">Annotation guidelines</h2><button class="btn" type="button" data-close>Close</button></div>
+  <p>Label what each comment <em>does</em> in context, not what its surface form suggests. Before labeling, read the diff, then the thread from top to bottom, then the target comment. Work independently: don't discuss items with the other annotator before recording your labels.</p>
+  <h3>Steps</h3>
+  <ol>
+    <li>Read the full context first: diff, previous comment, target comment, reply.</li>
+    <li>Identify the communicative act. A question that works as a directive is RC, not RQ.</li>
+    <li>Assign every label for which the comment clearly performs a distinct act.</li>
+    <li>Rate your confidence.</li>
+    <li>Write a one-sentence rationale. It is required when confidence is Low or you assign more than two labels.</li>
+    <li>Flag any item that should be discussed at reconciliation, even if you labeled it.</li>
+  </ol>
+  <h3>Don'ts</h3>
+  <ul>
+    <li>Don't label by length: long comments are not automatically EX.</li>
+    <li>Don't infer unstated intent: no CN because you personally see a risk.</li>
+    <li>Don't conflate topic with intent: a security comment can be EX or RC.</li>
+    <li>Don't assign AK to every reply: a reply that only informs is EX.</li>
+  </ul>
+  <h3>Context in this tool</h3>
+  <p>"Previous comment" is the review comment posted just before the target anywhere in the PR, so it may belong to another thread. "Reply" is the next comment in the target's own thread. Either may be missing.</p>
+  <h3>Intent taxonomy</h3>
+  <div id="defs"></div>
+</div></div>
+
+<div class="sheet" id="sheet-map" data-closable hidden><div role="dialog" aria-modal="true" aria-labelledby="m-title">
+  <div class="sheet-head"><h2 id="m-title">All items</h2><button class="btn" type="button" data-close>Close</button></div>
+  <div class="legend">
+    <span><span class="dot done"></span>Complete</span><span><span class="dot partial"></span>In progress</span><span><span class="dot"></span>Not started</span><span><span class="dot" style="background:var(--flag)"></span>Flagged</span>
+  </div>
+  <div class="grid" id="grid"></div>
+</div></div>
+
+<div class="sheet center" id="sheet-login" hidden><div role="dialog" aria-modal="true" aria-labelledby="l-title">
+  <h2 id="l-title">Sign in to annotate</h2>
+  <p>Enter the access code the study coordinator gave you. Your labels are saved under this code, so you can stop and pick up where you left off on any device.</p>
+  <form id="login-form" class="login">
+    <label class="eyebrow" for="code">Access code</label>
+    <input id="code" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" required>
+    <button class="btn primary" type="submit" id="login-btn">Start annotating</button>
+  </form>
+  <p class="login-msg" id="login-msg" role="alert"></p>
+</div></div>
+
+<script type="application/json" id="items-data">/*__ITEMS__*/</script>
+<script>
+const ITEMS = JSON.parse(document.getElementById("items-data").textContent);
+const LABELS = [
+  { code: "RC", name: "Request a Change", q: "Does the author direct the recipient to modify something?",
+    def: "Explicitly or implicitly directs the recipient to modify code, docs, a test, config or another artifact; an action is expected.",
+    markers: "Imperatives (rename, remove, add, fix); modal obligation (should, must, needs to); “this will need to be changed”.",
+    boundary: "No implied fix → CN. Optional alternative → SP. Rhetorical directive questions (“Shouldn’t this be snake_case?”) are RC." },
+  { code: "SP", name: "Suggest / Propose", q: "Does the author offer an alternative without requiring action?",
+    def: "Offers an alternative approach, implementation or phrasing as a possibility, not a requirement.",
+    markers: "you could, consider, might want to, alternatively, what about; just a thought, up to you, not a blocker.",
+    boundary: "“You should use…” → RC; “you could use…” → SP. Would the reviewer reopen discussion if ignored? Yes → RC." },
+  { code: "RQ", name: "Request Clarification", q: "Does the author seek information, rationale, or understanding?",
+    def: "Seeks information, justification or confirmation; oriented toward a response rather than a code change.",
+    markers: "Why did you…? What does this…? Is this…? I’m wondering whether…; Can you explain…?",
+    boundary: "A question that also identifies a risk can get RQ + CN. Directive rhetorical questions are RC." },
+  { code: "CN", name: "Raise a Concern", q: "Does the author flag a potential problem with no prescribed fix?",
+    def: "Reports a potential problem, risk or issue without saying what to do or whether action is required.",
+    markers: "this might, there could be, I’m not sure this handles; I’m concerned that, worried about.",
+    boundary: "Problem + what to do → RC. Often co-occurs with RQ (“Have we handled the null case here?”)." },
+  { code: "EX", name: "Provide an Explanation", q: "Does the author supply rationale, information, or an answer?",
+    def: "Supplies rationale, context, additional information or a direct answer to a prior question.",
+    markers: "because, the reason is; for context, note that; yes, that’s intentional.",
+    boundary: "Primary label for answers to RQ. EX adds information; AK only registers a stance." },
+  { code: "AK", name: "Acknowledge", q: "Does the author express a stance (approval, disagreement, appreciation)?",
+    def: "Expresses approval, disagreement, appreciation or acceptance without adding substantive information.",
+    markers: "LGTM, Good catch!, Makes sense; I disagree, Actually; Noted, Will address.",
+    boundary: "“Good catch, I’ll fix it” → RC (per schema). Informational replies are EX." },
+  { code: "CR", name: "Coordinate the Review", q: "Does the author manage workflow, timing, assignment, or follow-up?",
+    def: "Manages review logistics: assignment, timing, blocking status, escalation, follow-up unrelated to the code itself.",
+    markers: "assigning to @…; I’ll look at this after…, blocking on…; re-requesting review.",
+    boundary: "Coordination plus a code judgment (“Blocking until the null check is added”) → RC." },
+  { code: "VF", name: "Request Validation", q: "Does the author ask the recipient to empirically verify behavior?",
+    def: "Asks the recipient to run tests, verify on a platform, reproduce a bug or provide evidence.",
+    markers: "Can you verify…, Does this work on…, Could you confirm…; Can you add a test for…; Can you reproduce…",
+    boundary: "Expected reply is running/testing → VF; explaining → RQ. “Fix this edge case” → RC; “Can you verify it’s handled?” → VF." },
+  { code: "OB", name: "Report an Observation", q: "Does the author state a factual finding without directing action or judging it a problem?",
+    def: "States a factual finding about existing code, prior behavior or a pattern, without directing action or evaluating it as a problem.",
+    markers: "The existing implementation already…, I noticed that…; Currently, this…",
+    boundary: "OB states what is; EX explains why. If the finding implies a defect or risk → CN." },
+  { code: "UN", name: "Express Uncertainty", q: "Does the author signal doubt without naming a specific problem or asking?",
+    def: "Signals doubt or low confidence without identifying a specific defect (CN) or soliciting an answer (RQ).",
+    markers: "Not sure if…, I might be wrong, but…; This feels off; Probably fine, but…",
+    boundary: "“This could cause a race condition” → CN; “Not sure if this is thread-safe” → UN. Ends in a direct question → usually RQ." },
+  { code: "AT", name: "Action Taken", q: "Does the author report that a change, fix, or investigation is already done?",
+    def: "Reports a change, fix, investigation or other action that has already been completed.",
+    markers: "I’ve updated…, Fixed in commit…, Pushed a fix…, Added a test…; I looked into this: it turns out…",
+    boundary: "“I’ll address this” → CR (future); “Addressed in the latest commit” → AT. “Good catch!” → AK." },
+];
+const KEYS = ["1","2","3","4","5","6","7","8","9","0","-"];
+const $ = (id) => document.getElementById(id);
+const byId = new Map(ITEMS.map((it, i) => [it.id, i]));
+
+const state = { idx: 0, ann: {}, uid: null, canWrite: false };
+let itemsCol = null, metaDoc = null;
+
+function lsGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch {} }
+
+function blank() { return { labels: [], confidence: "", rationale: "", flag: false }; }
+function annOf(id) { return state.ann[id] || blank(); }
+function needsRationale(a) { return a.confidence === "Low" || a.labels.length > 2; }
+function statusOf(a) {
+  if (!a || (!a.labels.length && !a.confidence && !a.rationale.trim() && !a.flag)) return "empty";
+  return a.labels.length && a.confidence && (!needsRationale(a) || a.rationale.trim()) ? "done" : "partial";
+}
+
+/* ---------- rendering ---------- */
+function el(tag, attrs, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === "class") n.className = v; else if (k === "text") n.textContent = v; else n.setAttribute(k, v);
+  }
+  for (const k of kids) if (k != null) n.append(k);
+  return n;
+}
+function diffView(text) {
+  const pre = el("pre");
+  for (const line of (text || "").split("\n")) {
+    const cls = line.startsWith("@@") ? "hunk" : line.startsWith("+") ? "add" : line.startsWith("-") ? "del" : "";
+    pre.append(el("span", cls ? { class: cls, text: line || " " } : { text: line || " " }));
+  }
+  return el("div", { class: "diff" }, pre);
+}
+function comment(kind, who, text, emptyText) {
+  if (!text) return el("div", { class: "cmt none" }, el("div", { class: "who", text: kind }), el("div", { class: "prose", text: emptyText }));
+  return el("div", { class: "cmt" }, el("div", { class: "who", text: who ? `${kind} · @${who}` : kind }), el("div", { class: "prose", text }));
+}
+function renderItem() {
+  const it = ITEMS[state.idx];
+  const ctx = $("context");
+  ctx.replaceChildren();
+
+  const head = el("section", { class: "section" },
+    el("div", { class: "body" },
+      el("div", { class: "item-head" },
+        el("span", { class: "item-id mono", text: `#${it.id}` }),
+        el("span", { class: "hint mono", text: `${state.idx + 1} of ${ITEMS.length}` })),
+      el("div", { class: "pr-title", text: it.pr_title || "(untitled PR)" }),
+      el("div", { class: "meta" },
+        el("a", { href: it.pr_url, target: "_blank", rel: "noopener", text: `${it.repo_name} #${it.pr_number}` }),
+        it.language ? el("span", { text: it.language }) : null),
+      it.pr_description ? el("details", { class: "desc" }, el("summary", { text: "PR description" }), el("div", { class: "prose", text: it.pr_description })) : el("div", { class: "hint", text: "No PR description." })));
+
+  const code = el("section", { class: "section" },
+    el("header", {}, el("span", { class: "eyebrow", text: "Code under review" }), el("span", { class: "path", text: it.file_path })),
+    el("div", { class: "body" }, it.diff_context ? diffView(it.diff_context) : el("div", { class: "hint", text: "No diff excerpt." })));
+
+  const target = el("div", { class: "cmt target" }, el("div", { class: "who", text: "Comment to label" }), el("div", { class: "prose", text: it.reviewer_comment }));
+  const thread = el("section", { class: "section" },
+    el("header", {}, el("span", { class: "eyebrow", text: "Review discussion" })),
+    el("div", { class: "body thread" },
+      comment("Previous comment in this PR", it.previous_comment_author, it.previous_comment, "No earlier review comment."),
+      target,
+      comment("Reply in this thread", it.after_comment_author, it.after_comment, "No reply.")));
+
+  ctx.append(head, code, thread);
+  lsSet("ria-idx", String(state.idx));
+  try { history.replaceState(null, "", `#item-${it.id}`); } catch {}
+  updatePanel();
+}
+function updatePanel() {
+  const it = ITEMS[state.idx];
+  const a = annOf(it.id);
+  document.querySelectorAll(".chip").forEach((c) => c.setAttribute("aria-pressed", a.labels.includes(c.dataset.code)));
+  document.querySelectorAll("#conf button").forEach((b) => b.setAttribute("aria-pressed", a.confidence === b.dataset.v));
+  const r = $("rationale");
+  if (document.activeElement !== r) r.value = a.rationale;
+  const need = needsRationale(a);
+  $("r-hint").textContent = need ? "required (Low confidence or 3+ labels)" : "optional";
+  r.classList.toggle("need", need && !a.rationale.trim());
+  $("flag").checked = !!a.flag;
+  const s = statusOf(a);
+  $("state-dot").className = "dot " + (s === "empty" ? "" : s);
+  $("state-text").textContent = s === "done" ? "Complete" : s === "partial" ? missingText(a) : "Not started";
+  $("prev").disabled = state.idx === 0;
+  $("next").disabled = state.idx === ITEMS.length - 1;
+  renderProgress();
+}
+function missingText(a) {
+  const miss = [];
+  if (!a.labels.length) miss.push("a label");
+  if (!a.confidence) miss.push("confidence");
+  if (needsRationale(a) && !a.rationale.trim()) miss.push("a rationale");
+  return "Needs " + miss.join(", ");
+}
+function renderProgress() {
+  let done = 0, part = 0;
+  for (const it of ITEMS) { const s = statusOf(state.ann[it.id]); if (s === "done") done++; else if (s === "partial") part++; }
+  $("prog").textContent = `${done} / ${ITEMS.length} complete`;
+  $("m-done").style.width = (100 * done / ITEMS.length) + "%";
+  $("m-part").style.width = (100 * part / ITEMS.length) + "%";
+  if (!$("sheet-map").hidden) renderGrid();
+}
+function renderGrid() {
+  const g = $("grid");
+  g.replaceChildren(...ITEMS.map((it, i) => {
+    const a = state.ann[it.id];
+    const s = statusOf(a);
+    const b = el("button", { type: "button", class: `cell ${s === "empty" ? "" : s}${a && a.flag ? " flag" : ""}${i === state.idx ? " cur" : ""}`, text: String(it.id), "aria-label": `Item ${it.id}, ${s === "done" ? "complete" : s === "partial" ? "in progress" : "not started"}` });
+    b.onclick = () => { closeSheets(); go(i); };
+    return b;
+  }));
+}
+function renderDefs() {
+  $("defs").replaceChildren(...LABELS.map((l) => el("div", { class: "def" },
+    el("h4", {}, el("b", { text: l.code }), l.name),
+    el("p", {}, el("span", { class: "lbl", text: "Definition. " }), l.def),
+    el("p", {}, el("span", { class: "lbl", text: "Markers. " }), l.markers),
+    el("p", {}, el("span", { class: "lbl", text: "Boundary. " }), l.boundary))));
+}
+function buildChips() {
+  $("chips").replaceChildren(...LABELS.map((l, i) => {
+    const c = el("button", { type: "button", class: "chip", "data-code": l.code, "aria-pressed": "false", title: l.q },
+      el("b", { text: l.code }), el("span", { text: l.name }), el("kbd", { text: KEYS[i] }));
+    c.onclick = () => toggleLabel(l.code);
+    c.onmouseenter = c.onfocus = () => { $("qhelp").textContent = `${l.code}: ${l.q}`; };
+    return c;
+  }));
+}
+
+/* ---------- editing ---------- */
+function edit(fn, delay) {
+  if (!state.canWrite) { showNotice(writeBlockedText(), true); return; }
+  const id = ITEMS[state.idx].id;
+  const a = { ...annOf(id), labels: [...annOf(id).labels] };
+  fn(a);
+  a.labels.sort((x, y) => LABELS.findIndex((l) => l.code === x) - LABELS.findIndex((l) => l.code === y));
+  state.ann[id] = a;
+  updatePanel();
+  scheduleSave(id, delay);
+}
+function toggleLabel(code) { edit((a) => { a.labels = a.labels.includes(code) ? a.labels.filter((c) => c !== code) : [...a.labels, code]; }, 400); }
+function setConf(v) { edit((a) => { a.confidence = a.confidence === v ? "" : v; }, 400); }
+
+/* ---------- saving (Google Sheet through the Apps Script web app) ---------- */
+const API = String(window.ANNOTATION_API_URL || "").trim();
+const dirty = new Set();
+let saveTimer = null, inflight = false, failed = false, retryMs = 2000;
+
+function backupKey() { return `ria-backup-${state.uid}`; }
+function backup() { if (state.uid) lsSet(backupKey(), JSON.stringify({ ann: state.ann, dirty: [...dirty] })); }
+function setSave() {
+  const s = $("save");
+  if (!state.uid) { s.textContent = ""; return; }
+  s.classList.toggle("err", failed);
+  s.textContent = failed ? "Offline, will retry" : (inflight || dirty.size) ? "Saving…" : "All changes saved";
+}
+function scheduleSave(id, delay) {
+  dirty.add(id);
+  state.ann[id].updated_at = new Date().toISOString();
+  backup();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(flushAll, Math.max(delay, 800));
+  setSave();
+}
+function savePayload(ids) {
+  return {
+    action: "save",
+    code: state.uid,
+    items: ids.map((id) => {
+      const a = state.ann[id];
+      return { item_id: id, labels: a.labels, confidence: a.confidence, rationale: a.rationale, flag: !!a.flag, status: statusOf(a), updated_at: a.updated_at || "" };
+    }),
+  };
+}
+async function api(params, body) {
+  const url = API + "?" + new URLSearchParams(params);
+  // A text/plain body keeps this a "simple" request, which Apps Script accepts without a CORS preflight.
+  const r = await fetch(url, body ? { method: "POST", body: JSON.stringify(body) } : {});
+  if (!r.ok) throw Object.assign(new Error(`HTTP ${r.status}`), { code: "network" });
+  return r.json();
+}
+async function flushAll() {
+  clearTimeout(saveTimer); saveTimer = null;
+  if (inflight || !dirty.size || !state.uid) return;
+  const ids = [...dirty];
+  dirty.clear();
+  inflight = true; setSave();
+  try {
+    const res = await api({ action: "save" }, savePayload(ids));
+    if (!res.ok) throw Object.assign(new Error(res.error), { code: res.error });
+    failed = false; retryMs = 2000;
+  } catch (e) {
+    ids.forEach((id) => dirty.add(id));
+    failed = true;
+    if (e.code === "bad_code") {
+      // Keep the edits in this browser's backup, but stop retrying with a code the sheet rejects.
+      dirty.clear();
+      setTimeout(() => signOut("This access code is no longer accepted. Ask the study coordinator for a new one."));
+      return;
+    }
+    saveTimer = setTimeout(flushAll, retryMs);
+    retryMs = Math.min(retryMs * 2, 60000);
+  } finally {
+    inflight = false;
+    backup();
+    if (dirty.size && !saveTimer) saveTimer = setTimeout(flushAll, 800);
+    setSave();
+  }
+}
+function beaconUnsaved() {
+  if (!state.uid || !dirty.size || !navigator.sendBeacon) return;
+  try { navigator.sendBeacon(API + "?action=save", JSON.stringify(savePayload([...dirty]))); } catch {}
+}
+function writeBlockedText() { return "Sign in with your access code to save labels."; }
+function showNotice(text, warn) { const n = $("notice"); n.textContent = text; n.classList.toggle("warn", !!warn); n.hidden = false; }
+
+/* ---------- sign in ---------- */
+function normalize(v) {
+  return { labels: v.labels || [], confidence: v.confidence || "", rationale: v.rationale || "", flag: !!v.flag, updated_at: v.updated_at || "" };
+}
+async function signIn(code) {
+  const res = await api({ action: "load", code });
+  if (!res.ok) return res.error || "error";
+  state.uid = res.code;
+  state.canWrite = true;
+  state.ann = {};
+  dirty.clear();
+  for (const v of res.items) state.ann[Number(v.item_id)] = normalize(v);
+  // Anything saved only in this browser (for example while offline) and newer than the sheet goes back up.
+  let local = null;
+  try { local = JSON.parse(localStorage.getItem(backupKey()) || "null"); } catch {}
+  if (local && local.ann) {
+    for (const [k, a] of Object.entries(local.ann)) {
+      const id = Number(k), remote = state.ann[id];
+      if (byId.has(id) && (!remote || (a.updated_at || "") > remote.updated_at)) { state.ann[id] = normalize(a); dirty.add(id); }
+    }
+  }
+  lsSet("ria-code", res.code);
+  $("who").textContent = `· ${res.name || res.code}`;
+  $("btn-switch").hidden = false;
+  $("sheet-login").hidden = true;
+  $("notice").hidden = true;
+  updatePanel();
+  if (dirty.size) flushAll(); else setSave();
+  return null;
+}
+function showLogin(message) {
+  closeSheets();
+  $("login-msg").textContent = message || "";
+  $("sheet-login").hidden = false;
+  $("code").focus();
+}
+async function signOut(message) {
+  await flushAll();
+  beaconUnsaved();
+  state.uid = null; state.canWrite = false; state.ann = {};
+  dirty.clear(); failed = false;
+  try { localStorage.removeItem("ria-code"); } catch {}
+  $("who").textContent = "";
+  $("btn-switch").hidden = true;
+  updatePanel(); setSave();
+  showLogin(message);
+}
+$("login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const code = $("code").value.trim();
+  if (!code) return;
+  $("login-btn").disabled = true;
+  $("login-msg").textContent = "Checking your code…";
+  try {
+    const err = await signIn(code);
+    $("login-msg").textContent = err === "bad_code" ? "That code isn't on the annotator list. Check it and try again."
+      : err ? "The study sheet couldn't be reached. Try again in a moment." : "";
+  } catch {
+    $("login-msg").textContent = "The study sheet couldn't be reached. Check your connection and try again.";
+  } finally {
+    $("login-btn").disabled = false;
+  }
+});
+
+/* ---------- navigation ---------- */
+function go(i) { state.idx = Math.max(0, Math.min(ITEMS.length - 1, i)); renderItem(); window.scrollTo({ top: 0 }); }
+function nextTodo() {
+  for (let k = 1; k <= ITEMS.length; k++) {
+    const i = (state.idx + k) % ITEMS.length;
+    if (statusOf(state.ann[ITEMS[i].id]) !== "done") return go(i);
+  }
+  showNotice("Every item is complete. Thank you!");
+}
+function openSheet(id) { closeSheets(); $(id).hidden = false; const c = $(id).querySelector("[data-close]"); if (c) c.focus(); }
+function closeSheets() { document.querySelectorAll(".sheet[data-closable]").forEach((s) => { s.hidden = true; }); }
+
+$("prev").onclick = () => go(state.idx - 1);
+$("next").onclick = () => go(state.idx + 1);
+$("next-todo").onclick = nextTodo;
+$("conf").onclick = (e) => { const b = e.target.closest("button"); if (b) setConf(b.dataset.v); };
+$("rationale").oninput = (e) => edit((a) => { a.rationale = e.target.value; }, 1200);
+$("flag").onchange = (e) => edit((a) => { a.flag = e.target.checked; }, 300);
+$("btn-guide").onclick = () => openSheet("sheet-guide");
+$("btn-map").onclick = () => { openSheet("sheet-map"); renderGrid(); };
+$("btn-switch").onclick = () => signOut();
+document.querySelectorAll(".sheet[data-closable]").forEach((s) => {
+  s.addEventListener("click", (e) => { if (e.target === s || e.target.closest("[data-close]")) closeSheets(); });
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") return closeSheets();
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const t = e.target;
+  if (t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.tagName === "SELECT")) return;
+  if ([...document.querySelectorAll(".sheet")].some((s) => !s.hidden)) return;
+  const k = KEYS.indexOf(e.key);
+  if (k >= 0) { e.preventDefault(); toggleLabel(LABELS[k].code); return; }
+  const key = e.key.toLowerCase();
+  if (e.key === "ArrowLeft") go(state.idx - 1);
+  else if (e.key === "ArrowRight") go(state.idx + 1);
+  else if (key === "n") nextTodo();
+  else if (key === "h") setConf("High");
+  else if (key === "m") setConf("Medium");
+  else if (key === "l") setConf("Low");
+  else if (key === "f") edit((a) => { a.flag = !a.flag; }, 300);
+});
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushAll(); });
+window.addEventListener("pagehide", beaconUnsaved);
+window.addEventListener("beforeunload", (e) => { if (dirty.size || inflight) { e.preventDefault(); e.returnValue = ""; } });
+
+/* ---------- boot ---------- */
+buildChips();
+renderDefs();
+{
+  const m = /^#item-(\d+)$/.exec(location.hash);
+  const fromHash = m ? byId.get(+m[1]) : undefined;
+  const saved = parseInt(lsGet("ria-idx"), 10);
+  state.idx = fromHash != null ? fromHash : (saved >= 0 && saved < ITEMS.length ? saved : 0);
+}
+renderItem();
+setSave();
+
+if (!/^https:\/\/script\.google\.com\/|^http:\/\/(localhost|127\.0\.0\.1)[:/]/.test(API)) {
+  showNotice("This page isn't connected to the study's Google Sheet yet. The coordinator needs to set ANNOTATION_API_URL in config.js.", true);
+} else {
+  const code = lsGet("ria-code");
+  if (!code) showLogin();
+  else signIn(code).then(
+    (err) => { if (err) showLogin(err === "bad_code" ? "Your saved access code is no longer accepted. Enter a new one." : "The study sheet couldn't be reached. Try again in a moment."); },
+    () => showLogin("The study sheet couldn't be reached. Check your connection and try again."));
+}
+</script>
+</body>
+</html>

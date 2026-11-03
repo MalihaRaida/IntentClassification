@@ -1,0 +1,1 @@
+{"description": "close #8674 ", "comments": [{"id": 1885361612, "in_reply_to_id": null, "path": "packages/electron-publish/src/s3/s3Publisher.ts", "user": "mmaietta", "created_at": "2024-12-14T19:15:39Z", "body": "Just to be consistent with the rest of the codebase, can you please make this `!= null`?"}]}
