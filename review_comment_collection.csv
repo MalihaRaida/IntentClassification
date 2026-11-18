@@ -14237,29 +14237,24 @@ Seems like we might hit that if you deferred_invoke and then immediately pump: h
 -    wake();
 +    if (&m_thread_event_queue != ThreadEventQueue::current_or_null())
 +        wake();",bug,769,True
-290,bilibili/kratos,1224,https://github.com/bilibili/kratos/pull/1224,support expand config keys,"支持将类似aaa.bbb的key展开成map[aaa]map[bbb]interface{}
+290,hiyouga/LLaMA-Factory,6598,https://github.com/hiyouga/LLaMA-Factory/pull/6598,[model] Support MiniCPM-V,"# What does this PR do?
 
+Support Video/Image fine-tuning of MiniCPM-V-2.6 (w/o inference for now)
 
-这样可以实现通过key来覆盖文件中的结构体value，比如：
-spring:
-  cloud:
-    consul:
-      discovery:
-        catalogServicesWatch:
-          enabled: false
-          
-会被spring.cloud.consul.discovery.catalogServicesWatch.enabled=true 覆盖",config/options.go,Go,,,直接转换可能会有副作用，这里讨论过：https://github.com/go-kratos/kratos/pull/1181#discussion_r668826439,format为空，kv pairs的时候value为[]byte，其实也只能转成string了，谁会在kv pairs里塞二进制，然后再手动unmarshal呢，而且搞成string，也不妨碍他拿出来再手动unmarshal,longXboy,"@@ -61,7 +61,19 @@ func WithLogger(l log.Logger) Option {
- // to target map[string]interface{} using src.Format codec.
- func defaultDecoder(src *KeyValue, target map[string]interface{}) error {
- 	if src.Format == """" {
--		target[src.Key] = src.Value
-+		// expand key ""aaa.bbb"" into map[aaa]map[bbb]interface{}
-+		keys := strings.Split(src.Key, ""."")
-+		for i, k := range keys {
-+			if i == len(keys)-1 {
-+				// all kv data without format should be treated as string,
-+				// otherwise there will be problems with json parsing
-+				target[k] = string(src.Value)",suggestion,85,True
+Fixes #6287
+
+## Before submitting
+
+- [x] Did you read the [contributor guideline](https://github.com/hiyouga/LLaMA-Factory/blob/main/.github/CONTRIBUTING.md)?
+- [x] Did you write any new necessary tests?
+",src/llamafactory/data/collator.py,Python,We recommend to build pos ids before https://github.com/hiyouga/LLaMA-Factory/blob/382e932228d1bcfcdee0a25ee3f1977226f1c433/src/llamafactory/data/collator.py#L133 and let data collator to pad this,hiyouga,"the labels and attention mask have been already padded, besides, the torch's behavior of padding differs from the transformers due to the existence of `pad_to_multiple_of` https://github.com/hiyouga/LLaMA-Factory/blob/382e932228d1bcfcdee0a25ee3f1977226f1c433/src/llamafactory/train/sft/workflow.py#L60",,,"@@ -150,6 +153,16 @@ def __call__(self, features: Sequence[Dict[str, Any]]) -> Dict[str, ""torch.Tenso
+         if isinstance(features.get(""pixel_values""), list):  # for pixtral inputs
+             features = features.data  # use default_collate() instead of BatchEncoding.to()
+ 
++        if ""image_bound"" in features:  # for minicpmv inputs
++            features[""position_ids""] = [torch.arange(input_ids.size(0)).long() for input_ids in features[""input_ids""]]
++            features[""position_ids""] = pad_sequence(features[""position_ids""], batch_first=True, padding_value=0)
++            features[""labels""] = pad_sequence(features[""labels""], batch_first=True, padding_value=-100)",suggestion,301,True
 291,ggerganov/llama.cpp,19529,https://github.com/ggerganov/llama.cpp/pull/19529,"Add Jinja support for ""indent"" string filter","Only pure `| indent` supported for now, without the `first` flag since that would require massive changes to the Jinja engine.",tests/test-jinja.cpp,C++,"```suggestion
 
     test_template(t, ""indent"",
