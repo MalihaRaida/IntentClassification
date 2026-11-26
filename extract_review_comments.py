@@ -50,6 +50,10 @@ random.seed(SEED)
 ds = load_dataset("ronantakizawa/github-codereview")["train"]
 df = ds.select_columns(KEEP_COLUMNS).to_pandas()
 
+# Drop the dataset's negative samples: comment_type "none" rows are filler
+# ("No issues found.") rather than real review comments.
+df = df[df["comment_type"] != "none"]
+
 # Keep only comments that are at least MIN_COMMENT_LEN characters long
 df["reviewer_comment"] = df["reviewer_comment"].fillna("").str.strip()
 df = df[df["reviewer_comment"].str.len() >= MIN_COMMENT_LEN]
